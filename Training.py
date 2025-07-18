@@ -1,8 +1,8 @@
 import pandas as pd
 import numpy as np
 import tensorflow as tf
-from keras.models import load_model, Model
-from keras.layers import Input, LSTM, Dense, RepeatVector, TimeDistributed
+from keras.models import load_model, Model, Sequential
+from keras.layers import Input, LSTM, Dense, RepeatVector, TimeDistributed, Dropout
 from sklearn.preprocessing import MinMaxScaler
 from keras.callbacks import EarlyStopping
 from sklearn.model_selection import train_test_split
@@ -22,6 +22,8 @@ pressure = inp_df['Pressure'].values
 temperature = inp_df['Temperature'].values
 catalyst = inp_df['Catalyst'].values
 crude_density = inp_df['CrudeDensity'].values
+temp_cat=temperature*catalyst
+press_temp=pressure/(temperature + 1e-6)  
 
 petrol = out_df['Petrol'].values
 diesel = out_df['Diesel'].values
@@ -34,17 +36,20 @@ raw_features = np.column_stack([
     pressure,
     temperature,
     catalyst,
-    crude_density
+    crude_density,
+    temp_cat,   #interactive feature 
+    press_temp  #interactive feature   
+    
 ])
 
-raw_labels = np.column_stack([
+raw_labels = np.log1p(np.column_stack([      #np.log1p makes the dataset more normal like incase it is skewed 
     petrol,
     diesel,
     coke,
     lpg,
     bitumen,
     waste
-])
+]))
 
 # --- 2. Scaling and Sequencing ---
 # Using separate scalers for features and labels is good practice.
@@ -95,28 +100,34 @@ except (IOError, ImportError):
     
     # Encoder
     encoder_inputs = Input(shape=input_shape)
-    encoder_lstm = LSTM(100, activation='relu', return_state=True)
-    encoder_outputs, state_h, state_c = encoder_lstm(encoder_inputs)
-    encoder_states = [state_h, state_c]
+    #First Layer
+    e_lstm_1 = LSTM(150, activation='relu', return_sequences=True)(encoder_inputs)
+    e_dropout_1= Dropout(0.2)(e_lstm_1) #20% of the neurons are turned off to prevent overfitting 
+    #Second and Final Layer
+    e_lstm_f = LSTM(150, activation='relu', return_state=True)(e_dropout_1)
+
+    encoder_states = [e_lstm_f[1],e_lstm_f[2]]
 
     # The RepeatVector layer takes the encoder's final output (the context) and
     # repeats it f_s times to provide it as input to each step of the decoder.
-    decoder_inputs = RepeatVector(f_s)(encoder_outputs)
+    decoder_inputs = RepeatVector(f_s)(e_lstm_f[0])
 
-    # Decoder
-    decoder_lstm = LSTM(100, activation='relu', return_sequences=True)
-    decoder_outputs = decoder_lstm(decoder_inputs, initial_state=encoder_states)
+    # First decoder LSTM layer initialized with encoder context
+    d_lstm_1 = LSTM(150, activation='relu', return_sequences=True)(decoder_inputs,initial_state=encoder_states)
+    d_lstm_dropout=Dropout(0.2)(d_lstm_1) #20% neurons are turned off to prevent overfitting 
+    #2nd decoder LSTM layer 
+    d_lstm_2 = LSTM(150, activation='relu', return_sequences=True)(d_lstm_dropout)
     
     # The TimeDistributed layer applies a standard Dense layer to each temporal
     # slice of the input, allowing us to get an output for each of the f_s timesteps.
-    output_layer = TimeDistributed(Dense(output_shape))
-    outputs = output_layer(decoder_outputs)
+    output_layer = TimeDistributed(Dense(output_shape))(d_lstm_2)
+    outputs = output_layer(d_lstm_2)
 
     model = Model(encoder_inputs, outputs)
 
 
 # --- 5. Model Compilation and Training ---
-model.compile(optimizer='adam', loss='mse')
+model.compile(optimizer='adam', loss='mae')
 model.summary()
 
 early_stop = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
