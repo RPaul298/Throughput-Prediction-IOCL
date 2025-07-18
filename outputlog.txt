@@ -1,0 +1,21 @@
+WARNING:absl:You are saving your model as an HDF5 file via `model.save()` or `keras.saving.save_model(model)`. This file format is considered legacy. We recommend using instead the native Keras format, e.g. `model.save('my_model.keras')` or `keras.saving.save_model(model, 'my_model.keras')`.
+
+Model training complete and saved successfully!
+
+--- Starting Comprehensive Model Evaluation ---
+53/53 ━━━━━━━━━━━━━━━━━━━━ 6s 105ms/step 
+
+--- Analyzing Error in Real-World Units ---
+
+Overall Mean Absolute Error (Real-World Scale): 3.1974
+
+--- Performance Breakdown by Output ---
+  -> MAE for Petrol: 7.7443
+  -> MAE for Diesel: 4.3847
+  -> MAE for Coke: 1.8844
+  -> MAE for LPG: 1.9383
+  -> MAE for Bitumen: 2.2424
+  -> MAE for Waste: 0.9906
+
+
+  ------------------------18th July 10:15PM-------------------------------
