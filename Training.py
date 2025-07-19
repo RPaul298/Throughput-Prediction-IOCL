@@ -9,6 +9,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error
 import matplotlib.pyplot as plt
 import os
+import joblib
 
 # --- 1. Data Loading and Preparation ---
 print("Loading and preparing data...")
@@ -54,6 +55,7 @@ log_labels = np.log1p(raw_labels)
 # Using separate scalers for features and labels is good practice.
 feature_scaler = MinMaxScaler()
 label_scaler = MinMaxScaler()
+
 
 # Fit and transform the data
 n_features = feature_scaler.fit_transform(raw_features)
@@ -212,3 +214,7 @@ output_labels = ['Petrol', 'Diesel', 'Coke', 'LPG', 'Bitumen', 'Waste']
 for i in range(num_outputs):
     per_output_mae = mean_absolute_error(ytest_real[:, i], y_pred_real[:, i])
     print(f"  -> MAE for {output_labels[i]}: {per_output_mae:.4f}")
+#Save fitted scaler for better use in predictions and optimization
+joblib.dump(feature_scaler,"x_scaler.gz")
+joblib.dump(label_scaler,"y_scaler.gz")
+print("Scalers are saved for future use in prediction as x_scaler.gz and y_scaler.gz")
