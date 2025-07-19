@@ -22,9 +22,15 @@ except FileNotFoundError:
 
 pressure = inp_df['Pressure'].values
 temperature = inp_df['Temperature'].values
+Riser_Steam_rate=inp_df['Riser Steam Rate'].values 
 catalyst_type=inp_df['Catalyst Type'].values
+catalyst_age=inp_df['Catalyst Age'].values 
 catalyst_Amount = inp_df['Catalyst-to-oil Ratio'].values
 crude_density = inp_df['CrudeDensity'].values
+#Contents 
+sulfur_c=inp_df['Sulfur Content'].values
+nitrogen_c=inp_df['Nitrogen Content'].values
+ccr_c=inp_df['Conradson Carbon Residue Content'].values
 # Feature Engineering: Create interactive features
 temp_cat = temperature * catalyst_Amount
 press_temp = pressure / (temperature + 1e-6) # Add epsilon to avoid division by zero
