@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import tensorflow as tf
 from keras.models import load_model, Model
-from keras.layers import Input, LSTM, Dense, RepeatVector, TimeDistributed, Dropout
+from keras.layers import Input, LSTM, Dense, RepeatVector, TimeDistributed, Dropout, Attention, Concatenate
 from sklearn.preprocessing import MinMaxScaler
 from keras.callbacks import EarlyStopping
 from sklearn.model_selection import train_test_split
@@ -22,12 +22,12 @@ except FileNotFoundError:
 
 pressure = inp_df['Pressure'].values
 temperature = inp_df['Temperature'].values
-Riser_Steam_rate=inp_df['Riser Steam Rate'].values 
+Riser_Steam_rate=inp_df['Riser Steam Rate'].values
 catalyst_type=inp_df['Catalyst Type'].values
-catalyst_age=inp_df['Catalyst Age'].values 
+catalyst_age=inp_df['Catalyst Age'].values
 catalyst_Amount = inp_df['Catalyst-to-oil Ratio'].values
 crude_density = inp_df['CrudeDensity'].values
-#Contents 
+#Contents
 sulfur_c=inp_df['Sulfur Content'].values
 nitrogen_c=inp_df['Nitrogen Content'].values
 ccr_c=inp_df['Conradson Carbon Residue Content'].values
@@ -39,9 +39,14 @@ press_temp = pressure / (temperature + 1e-6) # Add epsilon to avoid division by 
 raw_features = np.column_stack([
     pressure,
     temperature,
+    Riser_Steam_rate,
     catalyst_type,
+    catalyst_age,
     catalyst_Amount,
     crude_density,
+    sulfur_c,
+    nitrogen_c,
+    ccr_c,
     temp_cat,      # Interactive feature
     press_temp     # Interactive feature
 ])
@@ -56,99 +61,99 @@ raw_labels = np.column_stack([
     out_df['Waste'].values
 ])
 
-# Apply log transform to labels to normalize distribution and handle potential skewness
+# Apply log transform to labels
 log_labels = np.log1p(raw_labels)
 
 # --- 2. Scaling and Sequencing ---
-# Using separate scalers for features and labels is good practice.
 feature_scaler = MinMaxScaler()
 label_scaler = MinMaxScaler()
-
-
-# Fit and transform the data
 n_features = feature_scaler.fit_transform(raw_features)
 n_labels = label_scaler.fit_transform(log_labels)
 
-t_s = 168  # Timesteps in input sequence (history)
-f_s = 168  # Timesteps to forecast (future)
+t_s = 168
+f_s = 168
 
 X_seq = []
 Y_seq = []
-
 print("Creating sequences...")
-# We use t_s steps of history to predict f_s steps in the future
 for i in range(len(n_features) - t_s - f_s + 1):
     X_seq.append(n_features[i:i + t_s])
     Y_seq.append(n_labels[i + t_s:i + t_s + f_s])
 
 X_seq = np.array(X_seq)
 Y_seq = np.array(Y_seq)
-
 print(f"Generated {len(X_seq)} sequences.")
 
 # --- 3. Train/Test Split ---
 Xtrain, Xtest, ytrain, ytest = train_test_split(X_seq, Y_seq, test_size=0.2, random_state=45)
 print(f"Training data shape: {Xtrain.shape}")
 print(f"Testing data shape: {Xtest.shape}")
-print(f"Training labels shape: {ytrain.shape}")
-print(f"Testing labels shape: {ytest.shape}")
+
+# --- Custom Weighted Loss Function ---
+o_w=tf.constant([2.0, 2.0, 4.0, 3.0, 1.0, 5.0]) # Weights
+def custom_weight(y_true,y_pred):
+    error=tf.abs(y_true-y_pred)
+    w_error=error*o_w
+    return tf.reduce_mean(w_error)
 
 # --- 4. Model Loading or Creation ---
 print("\nLoading or creating model...")
 MODEL_PATH = "Throughput_Prediction_001.h5"
 model = None
 
+# (Code for loading a compatible pre-trained model remains the same)
 if os.path.exists(MODEL_PATH):
     try:
-        # Load the model and check if the input shape matches the new data
         print("Pre-trained model file found. Checking for compatibility...")
-        temp_model = load_model(MODEL_PATH, compile=False)
-        # Check if the model's expected input features match our current data
+        temp_model = load_model(MODEL_PATH, custom_objects={'custom_weight': custom_weight})
         if temp_model.input_shape[2] == Xtrain.shape[2]:
             print("Model is compatible. Loading pre-trained model.")
             model = temp_model
         else:
-            print(f"Model incompatibility detected. Expected {temp_model.input_shape[2]} features but data has {Xtrain.shape[2]}.")
-            print("A new model will be created.")
+            print(f"Model incompatibility detected. A new model will be created.")
+            model = None
     except Exception as e:
-        print(f"Could not load or validate pre-trained model due to an error: {e}")
-        print("A new model will be created.")
+        print(f"Could not load pre-trained model: {e}. A new model will be created.")
+        model = None
+
 
 if model is None:
-    print("Creating a new Encoder-Decoder model.")
-    # Define a robust Encoder-Decoder model for sequence-to-sequence forecasting
-    # Input shape: (timesteps, features)
+    print("Creating a new 2-Layer Encoder-Decoder model with Attention.")
     input_shape = (Xtrain.shape[1], Xtrain.shape[2])
     output_shape = ytrain.shape[2]
 
-    # Encoder
+    # --- Encoder ---
     encoder_inputs = Input(shape=input_shape)
-    # First Layer
+    # First LSTM Layer
     e_lstm_1 = LSTM(150, activation='relu', return_sequences=True)(encoder_inputs)
-    e_dropout_1 = Dropout(0.2)(e_lstm_1)  # 20% of the neurons are turned off to prevent overfitting
-    # Second and Final Layer, returning state
-    _, state_h, state_c = LSTM(150, activation='relu', return_state=True)(e_dropout_1)
+    e_dropout_1 = Dropout(0.2)(e_lstm_1)
+    # Second LSTM Layer
+    encoder_outputs, state_h, state_c = LSTM(150, activation='relu', return_sequences=True, return_state=True)(e_dropout_1)
     encoder_states = [state_h, state_c]
 
-    # The RepeatVector layer takes the encoder's context and
-    # repeats it f_s times to provide it as input to each step of the decoder.
-    decoder_inputs = RepeatVector(f_s)(state_h) # Use the hidden state for the context
-
-    # Decoder
-    # First decoder LSTM layer initialized with encoder context
+    # --- Decoder ---
+    decoder_inputs = RepeatVector(f_s)(state_h)
+    # First Decoder LSTM Layer, initialized with encoder states
     d_lstm_1 = LSTM(150, activation='relu', return_sequences=True)(decoder_inputs, initial_state=encoder_states)
-    d_dropout_1 = Dropout(0.2)(d_lstm_1) # 20% neurons are turned off
-    # Second decoder LSTM layer
-    d_lstm_2 = LSTM(150, activation='relu', return_sequences=True)(d_dropout_1)
+    d_dropout_1 = Dropout(0.2)(d_lstm_1)
+    # Second Decoder LSTM Layer
+    decoder_outputs = LSTM(150, activation='relu', return_sequences=True)(d_dropout_1)
 
-    # The TimeDistributed layer applies a standard Dense layer to each temporal
-    # slice of the input, allowing us to get an output for each of the f_s timesteps.
-    outputs = TimeDistributed(Dense(output_shape))(d_lstm_2)
+
+    # --- Attention Mechanism ---
+    attention_layer = Attention()
+    context_vector = attention_layer([decoder_outputs, encoder_outputs])
+
+    # Combine decoder output and context vector
+    combined_output = Concatenate()([decoder_outputs, context_vector])
+
+    # Final Prediction Layer
+    outputs = TimeDistributed(Dense(output_shape))(combined_output)
 
     model = Model(encoder_inputs, outputs)
 
 # --- 5. Model Compilation and Training ---
-model.compile(optimizer='adam', loss='mae')
+model.compile(optimizer='adam', loss=custom_weight)
 model.summary()
 
 early_stop = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
@@ -165,16 +170,10 @@ history = model.fit(
 model.save(MODEL_PATH)
 print("\nModel training complete and saved successfully!")
 
-# ===================================================================
-#                      COMPREHENSIVE MODEL EVALUATION
-# ===================================================================
-
+# --- 6. Evaluation ---
+# (The comprehensive evaluation code remains the same)
 print("\n--- Starting Comprehensive Model Evaluation ---")
-
-# --- 6. Get Model Predictions on Test Data ---
 y_pred = model.predict(Xtest)
-
-# --- 7. Visual Analysis: Prediction vs. Actual Plot ---
 ytest_flat = ytest.flatten()
 y_pred_flat = y_pred.flatten()
 
@@ -188,7 +187,6 @@ plt.grid(True)
 plt.legend()
 plt.show()
 
-# --- 8. Visual Analysis: Residuals Plot ---
 residuals = ytest_flat - y_pred_flat
 plt.figure(figsize=(10, 6))
 plt.scatter(y_pred_flat, residuals, alpha=0.6, s=10)
@@ -199,30 +197,25 @@ plt.title("Residuals vs. Predicted Values")
 plt.grid(True)
 plt.show()
 
-# --- 9. Analysis in Real-World Units ---
 print("\n--- Analyzing Error in Real-World Units ---")
 num_samples, seq_len, num_outputs = y_pred.shape
 y_pred_reshaped = y_pred.reshape(num_samples * seq_len, num_outputs)
 ytest_reshaped = ytest.reshape(num_samples * seq_len, num_outputs)
 
-# Inverse transform to get back to the log scale
 y_pred_log = label_scaler.inverse_transform(y_pred_reshaped)
 ytest_log = label_scaler.inverse_transform(ytest_reshaped)
-
-# Inverse the log transform (expm1) to get the original real-world scale
 y_pred_real = np.expm1(y_pred_log)
 ytest_real = np.expm1(ytest_log)
 
 real_mae = mean_absolute_error(ytest_real, y_pred_real)
 print(f"\nOverall Mean Absolute Error (Real-World Scale): {real_mae:.4f}")
 
-# --- 10. Per-Output Performance Analysis ---
 print("\n--- Performance Breakdown by Output ---")
 output_labels = ['Petrol', 'Diesel', 'Coke', 'LPG', 'Bitumen', 'Waste']
 for i in range(num_outputs):
     per_output_mae = mean_absolute_error(ytest_real[:, i], y_pred_real[:, i])
     print(f"  -> MAE for {output_labels[i]}: {per_output_mae:.4f}")
-#Save fitted scaler for better use in predictions and optimization
+
 joblib.dump(feature_scaler,"x_scaler.gz")
 joblib.dump(label_scaler,"y_scaler.gz")
 print("Scalers are saved for future use in prediction as x_scaler.gz and y_scaler.gz")
