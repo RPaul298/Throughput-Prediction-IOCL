@@ -22,17 +22,19 @@ except FileNotFoundError:
 
 pressure = inp_df['Pressure'].values
 temperature = inp_df['Temperature'].values
-catalyst = inp_df['Catalyst'].values
+catalyst_type=inp_df['Catalyst Type'].values
+catalyst_Amount = inp_df['Catalyst-to-oil Ratio'].values
 crude_density = inp_df['CrudeDensity'].values
 # Feature Engineering: Create interactive features
-temp_cat = temperature * catalyst
+temp_cat = temperature * catalyst_Amount
 press_temp = pressure / (temperature + 1e-6) # Add epsilon to avoid division by zero
 
 # Combine all features
 raw_features = np.column_stack([
     pressure,
     temperature,
-    catalyst,
+    catalyst_type,
+    catalyst_Amount,
     crude_density,
     temp_cat,      # Interactive feature
     press_temp     # Interactive feature
