@@ -90,7 +90,7 @@ print(f"Training data shape: {Xtrain.shape}")
 print(f"Testing data shape: {Xtest.shape}")
 
 # --- Custom Weighted Loss Function ---
-o_w=tf.constant([2.0, 2.0, 4.0, 3.0, 1.0, 5.0]) # Weights
+o_w=tf.constant([5.0, 4.0, 2.0, 3.0, 2.0, 1.0]) # Weights
 def custom_weight(y_true,y_pred):
     error=tf.abs(y_true-y_pred)
     w_error=error*o_w
