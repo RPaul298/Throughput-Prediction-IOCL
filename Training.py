@@ -124,7 +124,7 @@ def build_model(hp):
 tuner = kt.RandomSearch(
     build_model,
     objective='val_loss',
-    max_trials=5,  # Number of hyperparameter combinations to try
+    max_trials=20,  # Number of hyperparameter combinations to try
     executions_per_trial=1, # Number of models to train per combination
     directory='tuning_dir',
     project_name='fcc_throughput_tuning'
