@@ -73,50 +73,56 @@ def custom_weight(y_true,y_pred):
 
 # --- 4. Model Builder for Hyperparameter Tuning ---
 ## We create a function that builds the model. KerasTuner will call this function.
+# --- 4. Model Builder with Fixes ---
 def build_model(hp):
     # --- Define Hyperparameters to Tune ---
     lstm_units = hp.Int('lstm_units', min_value=80, max_value=200, step=40)
     dropout_rate = hp.Float('dropout_rate', min_value=0.2, max_value=0.4, step=0.1)
-    learning_rate = hp.Choice('learning_rate', values=[1e-2, 1e-3])
+    # ## I'm keeping the high learning rate here, as gradient clipping should handle it.
+    learning_rate = hp.Choice('learning_rate', values=[0.01, 0.001])
 
     input_shape = (Xtrain.shape[1], Xtrain.shape[2])
     output_shape = ytrain.shape[2]
 
     # --- Encoder with Bidirectional LSTM ---
     encoder_inputs = Input(shape=input_shape)
-    # ## First LSTM Layer is now Bidirectional
-    e_bilstm_1 = Bidirectional(LSTM(lstm_units, activation='relu', return_sequences=True))(encoder_inputs)
+    # ## FIX: Removed activation='relu' to use the default 'tanh'
+    e_bilstm_1 = Bidirectional(LSTM(lstm_units, return_sequences=True))(encoder_inputs)
     e_dropout_1 = Dropout(dropout_rate)(e_bilstm_1)
-    # ## Second Bidirectional layer to get final states
+
+    # ## FIX: Removed activation='relu'
     encoder_outputs, fwd_h, fwd_c, bwd_h, bwd_c = Bidirectional(
-        LSTM(lstm_units, activation='relu', return_state=True, return_sequences=True)
+        LSTM(lstm_units, return_state=True, return_sequences=True)
     )(e_dropout_1)
 
-    # ## Concatenate the forward and backward states
+    # Concatenate states
     state_h = Concatenate()([fwd_h, bwd_h])
     state_c = Concatenate()([fwd_c, bwd_c])
     encoder_states = [state_h, state_c]
 
     # --- Decoder ---
-    # ## The decoder's LSTM units must be 2 * encoder units to match the concatenated states
     decoder_lstm_units = lstm_units * 2
     decoder_inputs = RepeatVector(f_s)(state_h)
 
-    d_lstm_1 = LSTM(decoder_lstm_units, activation='relu', return_sequences=True)(decoder_inputs, initial_state=encoder_states)
+    # ## FIX: Removed activation='relu'
+    d_lstm_1 = LSTM(decoder_lstm_units, return_sequences=True)(decoder_inputs, initial_state=encoder_states)
     d_dropout_1 = Dropout(dropout_rate)(d_lstm_1)
-    decoder_outputs_lstm = LSTM(decoder_lstm_units, activation='relu', return_sequences=True)(d_dropout_1)
+    # ## FIX: Removed activation='relu'
+    decoder_outputs_lstm = LSTM(decoder_lstm_units, return_sequences=True)(d_dropout_1)
 
     # --- Attention Mechanism ---
     attention_layer = Attention()
     context_vector = attention_layer([decoder_outputs_lstm, encoder_outputs])
     combined_output = Concatenate()([decoder_outputs_lstm, context_vector])
     outputs = TimeDistributed(Dense(output_shape))(combined_output)
-    
+
     model = Model(encoder_inputs, outputs)
-    
-    # Compile the model inside the function
-    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate), loss=custom_weight)
-    
+
+    # ## FIX: Added 'clipvalue=1.0' to prevent exploding gradients
+    optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate, clipvalue=1.0)
+
+    model.compile(optimizer=optimizer, loss=custom_weight)
+
     return model
 
 # --- 5. Hyperparameter Search ---
