@@ -16,8 +16,9 @@ def custom_weight(y_true, y_pred):
 print("Loading model and scalers...")
 try:
     model = load_model(
-        "Throughput_Prediction_Optimized_002.h5",
-        custom_objects={'custom_weight': custom_weight}
+        "Throughput_Prediction_001.h5",
+        custom_objects={'custom_weight': custom_weight},
+        compile=False
     )
     feature_scaler = joblib.load("x_scaler.gz")
     label_scaler = joblib.load("y_scaler.gz")
