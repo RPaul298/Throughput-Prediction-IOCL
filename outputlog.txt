@@ -19,3 +19,15 @@ Overall Mean Absolute Error (Real-World Scale): 3.1974
 
 
   ------------------------18th July 10:15PM-------------------------------
+  Overall Mean Absolute Error (Real-World Scale): 0.2957
+
+--- Performance Breakdown by Output ---
+  -> MAE for Petrol: 0.5930
+  -> MAE for Diesel: 0.3694
+  -> MAE for Coke: 0.2147
+  -> MAE for LPG: 0.3638
+  -> MAE for Bitumen: 0.1397
+  -> MAE for Waste: 0.0936
+
+Scalers are saved for future use in prediction as x_scaler.gz and y_scaler.gz
+---------------------------23rd July 2:50PM------------------------------------
