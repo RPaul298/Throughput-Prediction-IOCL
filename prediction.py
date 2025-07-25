@@ -3,7 +3,7 @@ import numpy as np
 from keras.models import load_model
 import joblib
 import tensorflow as tf
-
+import os 
 # --- 0. Define Custom Loss Function (Required for Loading the Model) ---
 # Keras needs the definition of any custom objects used during training.
 o_w = tf.constant([2.0, 2.0, 4.0, 3.0, 1.0, 5.0])
@@ -12,11 +12,14 @@ def custom_weight(y_true, y_pred):
     w_error = error * o_w
     return tf.reduce_mean(w_error)
 
+print("Current Working Directory is: ", os.getcwd())
+print("Files in this directory are: ", os.listdir('.'))
+
 # --- 1. Load All Saved Artifacts ---
 print("Loading model and scalers...")
 try:
     model = load_model(
-        "Throughput_Prediction_001.h5",
+        "Throughput_Prediction_Optimized_002.h5",
         custom_objects={'custom_weight': custom_weight},
         compile=False
     )
@@ -86,6 +89,7 @@ final_prediction = np.expm1(log_prediction)
 output_labels = ['Petrol', 'Diesel', 'Coke', 'LPG', 'Bitumen', 'Waste']
 predictions_df = pd.DataFrame(final_prediction, columns=output_labels)
 predictions_df.index = [f"Hour_{i+1}" for i in range(len(predictions_df))]
-
+a=np.sum(predictions_df)
 print("\n--- Predicted Yields ---")
 print(predictions_df.head(10)) # Display predictions for the first 10 hours
+print(a)

@@ -10,7 +10,7 @@ np.random.seed(45)
 tf.random.set_seed(45)
 
 # --- 1. Load Model and Scalers ---
-model = load_model("Throughput_Prediction_001.h5", compile=False)
+model = load_model("Throughput_Prediction_Optimized_002.h5", compile=False)
 s_x = joblib.load("x_scaler.gz")
 s_y = joblib.load("y_scaler.gz")
 
@@ -82,7 +82,7 @@ def func2(product_to_maximize, uncontrollable_inputs):
 
     # --- Scale the uncontrollable inputs ---
     # Create a temporary array with all features to scale them correctly
-    temp_full_array = np.zeros(len(ALL_PRIMARY_FEATURES))
+    temp_full_array = np.zeros(num_model_features)
     uncontrollable_scaled = {}
     for feature_name, real_value in uncontrollable_inputs.items():
         feature_index = ALL_PRIMARY_FEATURES.index(feature_name)
@@ -137,7 +137,7 @@ def func2(product_to_maximize, uncontrollable_inputs):
             print(f"  {feature_name}: {opt_full_real[feature_index]:.2f}")
 
         print("\n--- Predicted Maximum Yield ---")
-        print(f"📦 Total {product_to_maximize} Yield: {total_real_yield:.2f} (real-world units) over {fs} hours")
+        print(f"📦 Total {product_to_maximize} Yield: {total_real_yield:.2f} metric tons over {fs} hours")
 
         return opt_full_real, total_real_yield
     else:
